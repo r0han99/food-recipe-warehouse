@@ -5,13 +5,53 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+# standard library
+import datetime
+import sys
+
+
 # src
 from src.utils import *
 
+# google sheet
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
-def load_data():
-    data = pd.read_csv("./data/Food-Links-Cleaned-Recipes.csv")
-    return data
+@st.cache_resource
+def oauth():
+
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name(".streamlit/food-recipe-warehouse-15f86e2d8d6b.json", scope)
+    client = gspread.authorize(creds)
+
+    return client
+
+
+@st.cache_data
+def load_data(default="google-sheet"):
+
+    if default == "google-sheet":
+
+        # load from google sheet
+        client = oauth()
+
+        # Open the Google Sheet by name
+        spreadsheet = client.open("recipe_data")
+
+        sheet = spreadsheet.sheet1
+
+        data = sheet.get_all_values()
+
+        df = pd.DataFrame(data[1:], columns=data[0])
+        
+        return df, sheet
+
+
+    else:
+        # load previous snap-shot
+
+        data = pd.read_csv("./data/Food-Links-Cleaned-Recipes.csv")
+        return data
 
 
 
@@ -57,7 +97,6 @@ def increment_submission_count():
 
     
 
-
 def main():
 
     
@@ -70,12 +109,34 @@ def main():
 
     if 'submission_data' not in st.session_state:
         st.session_state.submission_data = []
+
+    if 'data_read_date' not in st.session_state:
+        st.session_state.data_read_date = datetime.now().strftime("%m/%d/%Y")
     
 
-    data = load_data()
-    processed_data = process_data(data)
+    data, sheet = load_data()
+    processed_data = data.copy(deep=True)
 
-    tab1, tab2, tab3 = st.tabs(["Enter New Recipes to Database", "Watch Current Recipes", "View & Edit Raw Database"])
+    tab0, tab1, tab2 = st.tabs(["Data Snapshot and Load time", "Enter New Recipes to Database", "Watch Current Recipes"]) #"View & Edit Raw Database"])
+
+    with tab0:
+
+        subtitle(f"Data Read Date ~ {st.session_state.data_read_date}")
+        subtitle("Snapshot")
+        st.dataframe(data)
+        st.divider()
+
+        subtitle("Login to Platforms to Access the Videos without Interruption", color="green", font_size="25px")
+        st.markdown("")
+        cols = st.columns(2)
+        with cols[0]:
+            for platform in ["Instagram", "Facebook", "Youtube"]:
+                subtitle(f"✦  {platform}")
+
+        with cols[1]:
+            for platform_link in ["https://www.instagram.com/", "https://www.facebook.com/", "https://www.youtube.com/" ]:
+                st.link_button(label="Login", url=platform_link, use_container_width=True)
+
 
 
     with tab1:
@@ -98,7 +159,7 @@ def main():
 
                 cuisine_list = ["Select Cuisine","Indian Main Course", "Italian Main Course", "Indian Non-Veg Snack", 
                                 "Indian Veg-Snack", "Italian Side Dish", 
-                                "Dish Foundation","Drinks & Smoothy", "Salads", "Other"]
+                                "Dish Foundation","Drinks & Smoothy", "Salads", "Other", "Dessert",'Ice-Cream']
                 
                 cuisine_label = st.selectbox("Cuisine", cuisine_list, key="select-cuisine")
 
@@ -113,8 +174,6 @@ def main():
                                 "LINK":video_link, 
                                 "FROM": from_label, 
                                 "CUISINE": cuisine_label
-                                
-                                
                                 }
                     
                     
@@ -129,36 +188,52 @@ def main():
 
 
             st.divider()
-            if st.checkbox("Done Entering Data!",):
+            subtitle("↪ If you are done entering New Recipes check this Box here!", font_size="25px")
+            if st.checkbox("Done Entering"):
                 st.divider()
-                cols = st.columns(2)
+                cols = st.columns(3)
                 with cols[0]:
-                    subtitle("Save Entered Data!")
+                    subtitle("Save/Show Entered Data!", font_size="18px")
+
+                if cols[1].button("Show Data!", use_container_width=True):
+                    new_rec = st.session_state.submission_data
+                    st.write(new_rec)
                 
 
-                if cols[1].button("Save Data!", use_container_width=True):
-                    
-                    new_rec = pd.DataFrame(st.session_state.submission_data)
-                    subtitle("New Entry", font_size="15px")
-                    st.write(new_rec)
+                if cols[2].button("Save Data!", use_container_width=True):
+
+                    rows = [] # to append the data at end ( list of lists as values)
+                    new_rec = st.session_state.submission_data
+
+                    for dicts in new_rec:
+                        rows.append(list(dicts.values()))
+
+                    subtitle(f"New Entries {st.session_state.submission_count}", font_size="15px")
+                    # st.write(rows)
+
+                    # load from google sheet
+                    client = oauth()
+
+                    # Open the Google Sheet by name
+                    spreadsheet = client.open("recipe_data")
+                    sheet = spreadsheet.sheet1
+                    sheet.append_rows(rows)
+
                     subtitle("Added to Data!", font_size="15px")
-                    df = pd.concat([processed_data, new_rec], axis=0, ignore_index=True)
-                    st.dataframe(df.tail())
-                    
-                    # saving
-                    save_data_backups(df)
-                    subtitle("Data Saved to Computer!", font_size="20px",color="green")
+                
+                    # Saving
+                    # save_data_backups(df)
+                    subtitle("Data Saved to Google-Sheet!", font_size="20px",color="green")
                     st.session_state.submission_count = 0
-                    
 
-            
+                    st.divider()
+                    with st.expander("Link to the Google-Sheet"):
+                        st.link_button("Google-Sheet", url="https://docs.google.com/spreadsheets/d/1TUkP_tcYUxxTyh2t4L4VnjxS2ItRSL-yIAxxlkvE6GA/edit?gid=412808850#gid=412808850")
 
-
-
-
-
-
-
+        # cuisine Entry
+        elif option == "Cuisine Entry!":
+            st.markdown("_This section will be used to fill in the current absence of Cuisines for the existing recipe Links._") 
+            st.warning("Under Development! ⏳")
 
 
     # Watch Current Recipes
@@ -186,24 +261,24 @@ def main():
 
 
     # View & Edit Raw Database
-    with tab3:
+    # with tab3:
 
-        function = st.selectbox("Choose function", ["Select Function", "View All Data", "Edit Data In-Place", ], key="select-func")
-        st.divider()
-        subtitle(function, font_size="35px", color="royalblue", text_align="center")
-        st.markdown("")
+    #     function = st.selectbox("Choose function", ["Select Function", "View All Data", "Edit Data In-Place", ], key="select-func")
+    #     st.divider()
+    #     subtitle(function, font_size="35px", color="royalblue", text_align="center")
+    #     st.markdown("")
         
-        if function == "Edit Data In-Place":
-            with st.expander("Original Sheet"):
-                st.data_editor(processed_data.reset_index(drop=True))
+    #     if function == "Edit Data In-Place":
+    #         with st.expander("Original Sheet"):
+    #             st.data_editor(processed_data.reset_index(drop=True))
 
-                st.divider()
-                st.info("If you edited anything in the Database and want to save the changes made.")
-                st.image("./assets/save.png")
+    #             st.divider()
+    #             st.info("If you edited anything in the Database and want to save the changes made.")
+    #             st.image("./assets/save.png")
             
 
-        elif function == "View All Data":
-            st.dataframe(processed_data)
+    #     elif function == "View All Data":
+    #         st.dataframe(processed_data)
             
 
 
