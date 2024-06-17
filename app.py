@@ -21,7 +21,20 @@ from oauth2client.service_account import ServiceAccountCredentials
 def oauth():
 
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(".streamlit/food-recipe-warehouse-15f86e2d8d6b.json", scope)
+    google_credentials = st.secrets["google_credentials"]
+    credentials_dict = {
+    "type": google_credentials["type"],
+    "project_id": google_credentials["project_id"],
+    "private_key_id": google_credentials["private_key_id"],
+    "private_key": google_credentials["private_key"].replace("\\n", "\n"),
+    "client_email": google_credentials["client_email"],
+    "client_id": google_credentials["client_id"],
+    "auth_uri": google_credentials["auth_uri"],
+    "token_uri": google_credentials["token_uri"],
+    "auth_provider_x509_cert_url": google_credentials["auth_provider_x509_cert_url"],
+    "client_x509_cert_url": google_credentials["client_x509_cert_url"]
+}
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
     client = gspread.authorize(creds)
 
     return client
